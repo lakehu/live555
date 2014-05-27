@@ -705,9 +705,14 @@ void continueAfterDESCRIBE(RTSPClient*, int resultCode, char* resultString) {
 	     << "\" subsession: " << env->getResultMsg() << "\n";
       } else {
 	*env << "Created receiver for \"" << subsession->mediumName()
-	     << "/" << subsession->codecName()
-	     << "\" subsession (client ports " << subsession->clientPortNum()
-	     << "-" << subsession->clientPortNum()+1 << ")\n";
+	     << "/" << subsession->codecName() << "\" subsession (";
+	if (subsession->rtcpIsMuxed()) {
+	  *env << "client port " << subsession->clientPortNum();
+	} else {
+	  *env << "client ports " << subsession->clientPortNum()
+	       << "-" << subsession->clientPortNum()+1;
+	}
+	*env << ")\n";
 	madeProgress = True;
 	
 	if (subsession->rtpSource() != NULL) {
@@ -760,8 +765,14 @@ void continueAfterSETUP(RTSPClient*, int resultCode, char* resultString) {
   if (resultCode == 0) {
       *env << "Setup \"" << subsession->mediumName()
 	   << "/" << subsession->codecName()
-	   << "\" subsession (client ports " << subsession->clientPortNum()
-	   << "-" << subsession->clientPortNum()+1 << ")\n";
+	   << "\" subsession (";
+      if (subsession->rtcpIsMuxed()) {
+	*env << "client port " << subsession->clientPortNum();
+      } else {
+	*env << "client ports " << subsession->clientPortNum()
+	     << "-" << subsession->clientPortNum()+1;
+      }
+      *env << ")\n";
       madeProgress = True;
   } else {
     *env << "Failed to setup \"" << subsession->mediumName()

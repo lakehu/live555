@@ -26,6 +26,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include <MPEG1or2AudioRTPSink.hh>
 #include <MPEG4GenericRTPSink.hh>
 #include <AC3AudioRTPSink.hh>
+#include <SimpleRTPSink.hh>
 #include <VorbisAudioRTPSink.hh>
 #include <H264VideoRTPSink.hh>
 #include <H265VideoRTPSink.hh>
@@ -325,6 +326,10 @@ RTPSink* MatroskaFile
     } else if (strcmp(track->mimeType, "audio/AC3") == 0) {
       result = AC3AudioRTPSink
 	::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, track->samplingFrequency);
+    } else if (strcmp(track->mimeType, "audio/OPUS") == 0) {
+      result = SimpleRTPSink
+	::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic,
+		    48000, "audio", "OPUS", 2, False/*only 1 Opus 'packet' in each RTP packet*/);
     } else if (strcmp(track->mimeType, "audio/VORBIS") == 0 || strcmp(track->mimeType, "video/THEORA") == 0) {
       // The Matroska file's 'Codec Private' data is assumed to be the codec configuration
       // information, containing the "Identification", "Comment", and "Setup" headers.
@@ -432,7 +437,6 @@ RTPSink* MatroskaFile
       u_int8_t* SPS = NULL; unsigned SPSSize = NULL;
       u_int8_t* PPS = NULL; unsigned PPSSize = NULL;
       u_int8_t* SPSandPPSBytes = NULL; unsigned numSPSandPPSBytes = 0;
-      unsigned profile_level_id = 0;
 
       do {
 	if (track->codecPrivateSize < 6) break;
@@ -457,11 +461,6 @@ RTPSink* MatroskaFile
 	    SPSSize = spsSize;
 	    SPS = new u_int8_t[spsSize];
 	    memmove(SPS, ptr, spsSize);
-	    
-	    // Save the first 3 bytes of the SPS (after the nal_unit_header) as 'profile_level_id':
-	    if (SPSSize >= 1/*'profile_level_id' offset within SPS*/ + 3/*num bytes needed*/) {
-	      profile_level_id = (SPS[1]<<16) | (SPS[2]<<8) | SPS[3];
-	    }
 	  }
 	  ptr += spsSize;
 	}
@@ -483,7 +482,7 @@ RTPSink* MatroskaFile
       } while (0);
 
       result = H264VideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic,
-					   SPS, SPSSize, PPS, PPSSize, profile_level_id);
+					   SPS, SPSSize, PPS, PPSSize);
 
       delete[] SPS; delete[] PPS;
     } else if (strcmp(track->mimeType, "video/H265") == 0) {
@@ -492,8 +491,6 @@ RTPSink* MatroskaFile
       u_int8_t* PPS = NULL; unsigned PPSSize = NULL;
       u_int8_t* VPS_SPS_PPSBytes = NULL; unsigned numVPS_SPS_PPSBytes = 0;
       unsigned i;
-      u_int8_t profileTierLevelHeaderBytes[12];
-      for (i = 0; i < 12; ++i) profileTierLevelHeaderBytes[i] = 0;
 
       do {
 	if (track->codecPrivateUsesH264FormatForH265) {
@@ -576,49 +573,10 @@ RTPSink* MatroskaFile
 	    }
 	  }
 	}
-
-	// Extract parameters that we need from the VPS or SPS NAL units
-	// (after removing 'emulation' bytes):
-	if (VPSSize > 0) {
-	  u_int8_t* vps = new u_int8_t[VPSSize];
-	  unsigned vpsSize = removeH264or5EmulationBytes(vps, VPSSize, VPS, VPSSize);
-
-	  if (vpsSize >= 6/*'profile_tier_level' offset*/ +12/*num 'profile_tier_level' bytes*/) {
-	    memmove(profileTierLevelHeaderBytes, &vps[6], 12);
-	    delete[] vps;
-	    break; // we're done
-	  }
-	  delete[] vps;
-	}
-	if (SPSSize > 0) {
-	  u_int8_t* sps = new u_int8_t[SPSSize];
-	  unsigned spsSize = removeH264or5EmulationBytes(sps, SPSSize, SPS, SPSSize);
-
-	  if (spsSize >= 3/*'profile_tier_level' offset*/ +12/*num 'profile_tier_level' bytes*/) {
-	    memmove(profileTierLevelHeaderBytes, &sps[3], 12);
-	    delete[] sps;
-	    break; // we're done
-	  }
-	  delete[] sps;
-	}
       } while (0);
 
-      // Parse the 12 'profile tier level' bytes to get parameters needed for "H265VideoRTPSink":
-      unsigned profileSpace  = profileTierLevelHeaderBytes[0]>>6; // general_profile_space
-      unsigned profileId = profileTierLevelHeaderBytes[0]&0x1F; // general_profile_idc
-      unsigned tierFlag = (profileTierLevelHeaderBytes[0]>>5)&0x1; // general_tier_flag
-      unsigned levelId = profileTierLevelHeaderBytes[11]; // general_level_idc
-      u_int8_t const* interop_constraints = &profileTierLevelHeaderBytes[5];
-      char interopConstraintsStr[100];
-      sprintf(interopConstraintsStr, "%02X%02X%02X%02X%02X%02X",
-	      interop_constraints[0], interop_constraints[1], interop_constraints[2],
-	      interop_constraints[3], interop_constraints[4], interop_constraints[5]);
-
       result = H265VideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic,
-					   VPS, VPSSize, SPS, SPSSize, PPS, PPSSize,
-					   profileSpace, profileId, tierFlag, levelId,
-					   interopConstraintsStr);
-
+					   VPS, VPSSize, SPS, SPSSize, PPS, PPSSize);
       delete[] VPS; delete[] SPS; delete[] PPS;
     } else if (strcmp(track->mimeType, "video/VP8") == 0) {
       result = VP8VideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic);
@@ -700,7 +658,8 @@ MatroskaTrack::MatroskaTrack()
     defaultDuration(0),
     name(NULL), language(NULL), codecID(NULL),
     samplingFrequency(0), numChannels(2), mimeType(""),
-    codecPrivateSize(0), codecPrivate(NULL), codecPrivateUsesH264FormatForH265(False),
+    codecPrivateSize(0), codecPrivate(NULL),
+    codecPrivateUsesH264FormatForH265(False), codecIsOpus(False),
     headerStrippedBytesSize(0), headerStrippedBytes(NULL),
     subframeSizeSize(0) {
 }

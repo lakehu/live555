@@ -176,6 +176,7 @@ public:
   RTPSource* rtpSource() { return fRTPSource; }
   RTCPInstance* rtcpInstance() { return fRTCPInstance; }
   unsigned rtpTimestampFrequency() const { return fRTPTimestampFrequency; }
+  Boolean rtcpIsMuxed() const { return fMultiplexRTCPWithRTP; }
   FramedSource* readSource() { return fReadSource; }
     // This is the source that client sinks read from.  It is usually
     // (but not necessarily) the same as "rtpSource()"
@@ -276,6 +277,7 @@ protected:
   Boolean parseSDPLine_c(char const* sdpLine);
   Boolean parseSDPLine_b(char const* sdpLine);
   Boolean parseSDPAttribute_rtpmap(char const* sdpLine);
+  Boolean parseSDPAttribute_rtcpmux(char const* sdpLine);
   Boolean parseSDPAttribute_control(char const* sdpLine);
   Boolean parseSDPAttribute_range(char const* sdpLine);
   Boolean parseSDPAttribute_fmtp(char const* sdpLine);
@@ -301,6 +303,7 @@ protected:
   char* fCodecName;
   char* fProtocolName;
   unsigned fRTPTimestampFrequency;
+  Boolean fMultiplexRTCPWithRTP;
   char* fControlPath; // holds optional a=control: string
   struct in_addr fSourceFilterAddr; // used for SSM
   unsigned fBandwidth; // in kilobits-per-second, from b= line

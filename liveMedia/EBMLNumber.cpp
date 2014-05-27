@@ -135,6 +135,9 @@ char const* EBMLId::stringName() const {
     case MATROSKA_ID_CUE_CLUSTER_POSITION: { return "Cue Cluster Position"; }
     case MATROSKA_ID_CUE_BLOCK_NUMBER: { return "Cue Block Number"; }
     case MATROSKA_ID_TAGS: { return "Tags"; }
+    case MATROSKA_ID_SEEK_PRE_ROLL: { return "SeekPreRoll"; }
+    case MATROSKA_ID_CODEC_DELAY: { return "CodecDelay"; }
+    case MATROSKA_ID_DISCARD_PADDING: { return "DiscardPadding"; }
     default: { return "*****unknown*****"; }
   }
 }

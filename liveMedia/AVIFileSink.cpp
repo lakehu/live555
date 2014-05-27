@@ -178,7 +178,7 @@ AVIFileSink::~AVIFileSink() {
   MediaSubsessionIterator iter(fInputSession);
   MediaSubsession* subsession;
   while ((subsession = iter.next()) != NULL) {
-    subsession->readSource()->stopGettingFrames();
+    if (subsession->readSource() != NULL) subsession->readSource()->stopGettingFrames();
 
     AVISubsessionIOState* ioState
       = (AVISubsessionIOState*)(subsession->miscPtr);

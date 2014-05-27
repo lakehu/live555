@@ -335,7 +335,8 @@ RTSPServer::RTSPServer(UsageEnvironment& env,
     fClientConnectionsForHTTPTunneling(NULL), // will get created if needed
     fClientSessions(HashTable::create(STRING_HASH_KEYS)),
     fPendingRegisterRequests(HashTable::create(ONE_WORD_HASH_KEYS)), fRegisterRequestCounter(0),
-    fAuthDB(authDatabase), fReclamationTestSeconds(reclamationTestSeconds) {
+    fAuthDB(authDatabase), fReclamationTestSeconds(reclamationTestSeconds),
+    fAllowStreamingRTPOverTCP(True) {
   ignoreSigPipeOnSocket(ourSocket); // so that clients on the same host that are killed don't also kill us
   
   // Arrange to handle connections from others:
@@ -826,15 +827,13 @@ static void parseTransportHeaderForREGISTER(char const* buf,
     ++buf;
   }
   
-  int reuseConnectionNum;
-
   // Then, run through each of the fields, looking for ones we handle:
   char const* fields = buf + 10;
   while (*fields == ' ') ++fields;
   char* field = strDupSize(fields);
   while (sscanf(fields, "%[^;\r\n]", field) == 1) {
-    if (sscanf(field, "reuse_connection = %d", &reuseConnectionNum) == 1) {
-      reuseConnection = reuseConnectionNum != 0;
+    if (strcmp(field, "reuse_connection") == 0) {
+      reuseConnection = True;
     } else if (_strncasecmp(field, "preferred_delivery_protocol=udp", 31) == 0) {
       deliverViaTCP = False;
     } else if (_strncasecmp(field, "preferred_delivery_protocol=interleaved", 39) == 0) {
@@ -1698,16 +1697,20 @@ void RTSPServer::RTSPClientSession
 	    break;
 	  }
           case RTP_TCP: {
-	    snprintf((char*)ourClientConnection->fResponseBuffer, sizeof ourClientConnection->fResponseBuffer,
-		     "RTSP/1.0 200 OK\r\n"
-		     "CSeq: %s\r\n"
-		     "%s"
-		     "Transport: RTP/AVP/TCP;unicast;destination=%s;source=%s;interleaved=%d-%d\r\n"
-		     "Session: %08X%s\r\n\r\n",
-		     ourClientConnection->fCurrentCSeq,
-		     dateHeader(),
-		     destAddrStr.val(), sourceAddrStr.val(), rtpChannelId, rtcpChannelId,
-		     fOurSessionId, timeoutParameterString);
+	    if (!fOurServer.fAllowStreamingRTPOverTCP) {
+	      ourClientConnection->handleCmd_unsupportedTransport();
+	    } else {
+	      snprintf((char*)ourClientConnection->fResponseBuffer, sizeof ourClientConnection->fResponseBuffer,
+		       "RTSP/1.0 200 OK\r\n"
+		       "CSeq: %s\r\n"
+		       "%s"
+		       "Transport: RTP/AVP/TCP;unicast;destination=%s;source=%s;interleaved=%d-%d\r\n"
+		       "Session: %08X%s\r\n\r\n",
+		       ourClientConnection->fCurrentCSeq,
+		       dateHeader(),
+		       destAddrStr.val(), sourceAddrStr.val(), rtpChannelId, rtcpChannelId,
+		       fOurSessionId, timeoutParameterString);
+	    }
 	    break;
 	  }
           case RAW_UDP: {

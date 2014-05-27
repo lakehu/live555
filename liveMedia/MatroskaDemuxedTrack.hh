@@ -58,6 +58,7 @@ private:
   MatroskaDemux& fOurSourceDemux;
   struct timeval fPrevPresentationTime;
   int fDurationImbalance;
+  unsigned fOpusTrackNumber; // hack for Opus audio
 };
 
 #endif

@@ -128,6 +128,7 @@ public:
   unsigned codecPrivateSize;
   u_int8_t* codecPrivate;
   Boolean codecPrivateUsesH264FormatForH265; // a hack specifically for H.265 video tracks
+  Boolean codecIsOpus; // a hack for Opus audio
   unsigned headerStrippedBytesSize;
   u_int8_t* headerStrippedBytes;
   unsigned subframeSizeSize; // 0 means: frames do not have subframes (the default behavior)

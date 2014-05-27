@@ -318,7 +318,7 @@ QuickTimeFileSink::~QuickTimeFileSink() {
   MediaSubsessionIterator iter(fInputSession);
   MediaSubsession* subsession;
   while ((subsession = iter.next()) != NULL) {
-    subsession->readSource()->stopGettingFrames();
+    if (subsession->readSource() != NULL) subsession->readSource()->stopGettingFrames();
 
     SubsessionIOState* ioState
       = (SubsessionIOState*)(subsession->miscPtr);

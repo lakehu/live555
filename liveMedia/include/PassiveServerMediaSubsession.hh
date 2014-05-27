@@ -43,6 +43,8 @@ protected:
       // called only by createNew();
   virtual ~PassiveServerMediaSubsession();
 
+  virtual Boolean rtcpIsMuxed();
+
 protected: // redefined virtual functions
   virtual char const* sdpLines();
   virtual void getStreamParameters(unsigned clientSessionId,

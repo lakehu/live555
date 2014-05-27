@@ -115,12 +115,12 @@ static double dTimeNow() {
 
 static unsigned const maxRTCPPacketSize = 1450;
 	// bytes (1500, minus some allowance for IP, UDP, UMTP headers)
-static unsigned const preferredPacketSize = 1000; // bytes
+static unsigned const preferredRTCPPacketSize = 1000; // bytes
 
 RTCPInstance::RTCPInstance(UsageEnvironment& env, Groupsock* RTCPgs,
 			   unsigned totSessionBW,
 			   unsigned char const* cname,
-			   RTPSink* sink, RTPSource const* source,
+			   RTPSink* sink, RTPSource* source,
 			   Boolean isSSMSource)
   : Medium(env), fRTCPInterface(this, RTCPgs), fTotSessionBW(totSessionBW),
     fSink(sink), fSource(source), fIsSSMSource(isSSMSource),
@@ -151,17 +151,19 @@ RTCPInstance::RTCPInstance(UsageEnvironment& env, Groupsock* RTCPgs,
   if (fKnownMembers == NULL || fInBuf == NULL) return;
   fNumBytesAlreadyRead = 0;
 
-  // A hack to save buffer space, because RTCP packets are always small:
-  unsigned savedMaxSize = OutPacketBuffer::maxSize;
-  OutPacketBuffer::maxSize = maxRTCPPacketSize;
-  fOutBuf = new OutPacketBuffer(preferredPacketSize, maxRTCPPacketSize);
-  OutPacketBuffer::maxSize = savedMaxSize;
+  fOutBuf = new OutPacketBuffer(preferredRTCPPacketSize, maxRTCPPacketSize, maxRTCPPacketSize);
   if (fOutBuf == NULL) return;
 
-  // Arrange to handle incoming reports from others:
-  TaskScheduler::BackgroundHandlerProc* handler
-    = (TaskScheduler::BackgroundHandlerProc*)&incomingReportHandler;
-  fRTCPInterface.startNetworkReading(handler);
+  if (fSource != NULL && fSource->RTPgs() == RTCPgs) {
+    // We're receiving RTCP reports that are multiplexed with RTP, so ask the RTP source
+    // to give them to us:
+    fSource->registerForMultiplexedRTCPPackets(this);
+  } else {
+    // Arrange to handle incoming reports from the network:
+    TaskScheduler::BackgroundHandlerProc* handler
+      = (TaskScheduler::BackgroundHandlerProc*)&incomingReportHandler;
+    fRTCPInterface.startNetworkReading(handler);
+  }
 
   // Send our first report.
   fTypeOfEvent = EVENT_REPORT;
@@ -177,6 +179,8 @@ RTCPInstance::~RTCPInstance() {
 #ifdef DEBUG
   fprintf(stderr, "RTCPInstance[%p]::~RTCPInstance()\n", this);
 #endif
+  if (fSource != NULL) fSource->deregisterForMultiplexedRTCPPackets();
+
   // Begin by sending a BYE.  We have to do this immediately, without
   // 'reconsideration', because "this" is going away.
   fTypeOfEvent = EVENT_BYE; // not used, but...
@@ -199,7 +203,7 @@ RTCPInstance::~RTCPInstance() {
 RTCPInstance* RTCPInstance::createNew(UsageEnvironment& env, Groupsock* RTCPgs,
 				      unsigned totSessionBW,
 				      unsigned char const* cname,
-				      RTPSink* sink, RTPSource const* source,
+				      RTPSink* sink, RTPSource* source,
 				      Boolean isSSMSource) {
   return new RTCPInstance(env, RTCPgs, totSessionBW, cname, sink, source,
 			  isSSMSource);
@@ -308,6 +312,13 @@ void RTCPInstance::addStreamSocket(int sockNum,
   fRTCPInterface.startNetworkReading(handler);
 }
 
+void RTCPInstance
+::injectReport(u_int8_t const* packet, unsigned packetSize, struct sockaddr_in const& fromAddress) {
+  if (packetSize > maxRTCPPacketSize) packetSize = maxRTCPPacketSize;
+  memmove(fInBuf, packet, packetSize);
+  processIncomingReport(packetSize, fromAddress);
+}
+
 static unsigned const IP_UDP_HDR_SIZE = 28;
     // overhead (bytes) of IP and UDP hdrs
 
@@ -320,9 +331,6 @@ void RTCPInstance::incomingReportHandler(RTCPInstance* instance,
 
 void RTCPInstance::incomingReportHandler1() {
   do {
-    Boolean callByeHandler = False;
-    int tcpReadStreamSocketNum = fRTCPInterface.nextTCPReadStreamSocketNum();
-    unsigned char tcpReadStreamChannelId = fRTCPInterface.nextTCPReadStreamChannelId();
     unsigned packetSize = 0;
     unsigned numBytesRead;
     struct sockaddr_in fromAddress;
@@ -359,27 +367,41 @@ void RTCPInstance::incomingReportHandler1() {
       }
     }
 
-    unsigned char* pkt = fInBuf;
     if (fIsSSMSource && !packetWasFromOurHost) {
-      // This packet is assumed to have been received via unicast (because we're a SSM source, and SSM receivers send back RTCP "RR"
-      // packets via unicast).  'Reflect' the packet by resending it to the multicast group, so that any other receivers can also
-      // get to see it.
+      // This packet is assumed to have been received via unicast (because we're a SSM source,
+      // and SSM receivers send back RTCP "RR" packets via unicast).
+      // 'Reflect' the packet by resending it to the multicast group, so that any other receivers
+      // can also get to see it.
 
       // NOTE: Denial-of-service attacks are possible here.
       // Users of this software may wish to add their own,
       // application-specific mechanism for 'authenticating' the
       // validity of this packet before reflecting it.
 
-      // NOTE: The test for "!packetWasFromOurHost" means that we won't reflect RTCP packets that come from other processes on
-      // the same host as us.  The reason for this is that the 'packet size' test above is not 100% reliable; some packets
-      // that were truly looped back from us might not be detected as such, and this might lead to infinite forwarding/receiving
-      // of some packets.  To avoid this possibility, we only reflect RTCP packets that we know for sure originated elsewhere.
-      // (Note, though, that if we ever re-enable the code in "Groupsock::multicastSendOnly()", then we could remove the test for
-      // "!packetWasFromOurHost".)
-      fRTCPInterface.sendPacket(pkt, packetSize);
+      // NOTE: The test for "!packetWasFromOurHost" means that we won't reflect RTCP packets
+      // that come from other processes on the same host as us.  The reason for this is that the
+      // 'packet size' test above is not 100% reliable; some packets that were truly looped back
+      // from us might not be detected as such, and this might lead to infinite
+      // forwarding/receiving of some packets.  To avoid this possibility, we reflect only
+      // RTCP packets that we know for sure originated elsewhere.
+      // (Note, though, that if we ever re-enable the code in "Groupsock::multicastSendOnly()",
+      // then we could remove the test for "!packetWasFromOurHost".)
+      fRTCPInterface.sendPacket(fInBuf, packetSize);
       fHaveJustSentPacket = True;
       fLastPacketSentSize = packetSize;
     }
+
+    processIncomingReport(packetSize, fromAddress);
+  } while (0);
+}
+
+void RTCPInstance
+::processIncomingReport(unsigned packetSize, struct sockaddr_in const& fromAddress) {
+  do {
+    Boolean callByeHandler = False;
+    int tcpReadStreamSocketNum = fRTCPInterface.nextTCPReadStreamSocketNum();
+    unsigned char tcpReadStreamChannelId = fRTCPInterface.nextTCPReadStreamChannelId();
+    unsigned char* pkt = fInBuf;
 
 #ifdef DEBUG
     fprintf(stderr, "[%p]saw incoming RTCP packet", this);

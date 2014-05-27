@@ -25,8 +25,10 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "SimpleRTPSink.hh"
 #include "TheoraVideoRTPSink.hh"
 
-////////// OggTrackTable definition /////////                                                       
-// For looking up and iterating over the file's tracks:                                            
+////////// OggTrackTable definition /////////
+
+// For looking up and iterating over the file's tracks:
+
 class OggTrackTable {
 public:
   OggTrackTable();

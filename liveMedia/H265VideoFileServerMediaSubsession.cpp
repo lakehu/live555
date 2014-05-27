@@ -70,7 +70,7 @@ void H265VideoFileServerMediaSubsession::checkForAuxSDPLine1() {
 
     // Signal the event loop that we're done:
     setDoneFlag();
-  } else {
+  } else if (!fDoneFlag) {
     // try again after a brief delay:
     int uSecsToDelay = 100000; // 100 ms
     nextTask() = envir().taskScheduler().scheduleDelayedTask(uSecsToDelay,

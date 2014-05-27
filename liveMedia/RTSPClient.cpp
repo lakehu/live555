@@ -645,7 +645,7 @@ Boolean RTSPClient::setRequestFields(RequestRecord* request,
 	delete[] cmdURL;
 	return False;
       }
-      rtcpNumber = rtpNumber + 1;
+      rtcpNumber = subsession.rtcpIsMuxed() ? rtpNumber : rtpNumber + 1;
     }
     unsigned transportSize = strlen(transportFmt)
       + strlen(transportTypeStr) + strlen(modeStr) + strlen(portTypeStr) + 2*5 /* max port len */;
