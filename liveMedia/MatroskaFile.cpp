@@ -730,7 +730,7 @@ void MatroskaDemux::removeTrack(unsigned trackNumber) {
   fDemuxedTracksTable->Remove((char const*)trackNumber);
   if (fDemuxedTracksTable->numEntries() == 0) {
     // We no longer have any demuxed tracks, so delete ourselves now:
-    delete this;
+    Medium::close(this);
   }
 }
 

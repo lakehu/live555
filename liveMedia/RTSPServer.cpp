@@ -909,25 +909,27 @@ void RTSPServer::RTSPClientConnection::handleRequestBytes(int newBytesRead) {
 	// Then copy any remaining (undecoded) bytes to the end:
 	for (unsigned j = 0; j < newBase64RemainderCount; ++j) *to++ = (ptr-fBase64RemainderCount+numBytesToDecode)[j];
 	
-	newBytesRead = decodedSize + newBase64RemainderCount; // adjust to allow for the size of the new decoded data (+ remainder)
+	newBytesRead = decodedSize - fBase64RemainderCount + newBase64RemainderCount;
+	  // adjust to allow for the size of the new decoded data (+ remainder)
 	delete[] decodedBytes;
       }
       fBase64RemainderCount = newBase64RemainderCount;
-      if (fBase64RemainderCount > 0) break; // because we know that we have more input bytes still to receive
     }
     
-    // Look for the end of the message: <CR><LF><CR><LF>
     unsigned char *tmpPtr = fLastCRLF + 2;
-    if (tmpPtr < fRequestBuffer) tmpPtr = fRequestBuffer;
-    while (tmpPtr < &ptr[newBytesRead-1]) {
-      if (*tmpPtr == '\r' && *(tmpPtr+1) == '\n') {
-	if (tmpPtr - fLastCRLF == 2) { // This is it:
-	  endOfMsg = True;
-	  break;
+    if (fBase64RemainderCount == 0) { // no more Base-64 bytes remain to be read/decoded
+      // Look for the end of the message: <CR><LF><CR><LF>
+      if (tmpPtr < fRequestBuffer) tmpPtr = fRequestBuffer;
+      while (tmpPtr < &ptr[newBytesRead-1]) {
+	if (*tmpPtr == '\r' && *(tmpPtr+1) == '\n') {
+	  if (tmpPtr - fLastCRLF == 2) { // This is it:
+	    endOfMsg = True;
+	    break;
+	  }
+	  fLastCRLF = tmpPtr;
 	}
-	fLastCRLF = tmpPtr;
+	++tmpPtr;
       }
-      ++tmpPtr;
     }
     
     fRequestBufferBytesLeft -= newBytesRead;
@@ -1562,6 +1564,14 @@ void RTSPServer::RTSPClientSession
     }
     // ASSERT: subsession != NULL
     
+    void*& token = fStreamStates[streamNum].streamToken; // alias
+    if (token != NULL) {
+      // We already handled a "SETUP" for this track (to the same client),
+      // so stop any existing streaming of it, before we set it up again:
+      subsession->pauseStream(fOurSessionId, token);
+      subsession->deleteStream(fOurSessionId, token);
+    }
+
     // Look for a "Transport:" header in the request string, to extract client parameters:
     StreamingMode streamingMode;
     char* streamingModeString = NULL; // set when RAW_UDP streaming is specified

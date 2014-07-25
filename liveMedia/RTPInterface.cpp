@@ -138,6 +138,7 @@ void RTPInterface::setStreamSocket(int sockNum,
   fGS->removeAllDestinations();
   envir().taskScheduler().disableBackgroundHandling(fGS->socketNum()); // turn off any reading on our datagram socket
   fGS->reset(); // and close our datagram socket, because we won't be using it anymore
+
   addStreamSocket(sockNum, streamChannelId);
 }
 
@@ -171,19 +172,28 @@ static void deregisterSocket(UsageEnvironment& env, int sockNum, unsigned char s
 
 void RTPInterface::removeStreamSocket(int sockNum,
 				      unsigned char streamChannelId) {
-  for (tcpStreamRecord** streamsPtr = &fTCPStreams; *streamsPtr != NULL;
-       streamsPtr = &((*streamsPtr)->fNext)) {
-    if ((*streamsPtr)->fStreamSocketNum == sockNum
-	&& (streamChannelId == 0xFF || streamChannelId == (*streamsPtr)->fStreamChannelId)) {
-      deregisterSocket(envir(), sockNum, (*streamsPtr)->fStreamChannelId);
+  while (1) {
+    tcpStreamRecord** streamsPtr = &fTCPStreams;
 
-      // Then remove the record pointed to by *streamsPtr :
-      tcpStreamRecord* next = (*streamsPtr)->fNext;
-      (*streamsPtr)->fNext = NULL;
-      delete (*streamsPtr);
-      *streamsPtr = next;
-      return;
+    while (*streamsPtr != NULL) {
+      if ((*streamsPtr)->fStreamSocketNum == sockNum
+	  && (streamChannelId == 0xFF || streamChannelId == (*streamsPtr)->fStreamChannelId)) {
+	// Delete the record pointed to by *streamsPtr :
+	tcpStreamRecord* next = (*streamsPtr)->fNext;
+	(*streamsPtr)->fNext = NULL;
+	delete (*streamsPtr);
+	*streamsPtr = next;
+
+	// And 'deregister' this socket,channelId pair:
+	deregisterSocket(envir(), sockNum, streamChannelId);
+
+	if (streamChannelId != 0xFF) return; // we're done
+	break; // start again from the beginning of the list, in case the list has changed
+      } else {
+	streamsPtr = &((*streamsPtr)->fNext);
+      }
     }
+    if (*streamsPtr == NULL) break;
   }
 }
 
@@ -205,10 +215,11 @@ Boolean RTPInterface::sendPacket(unsigned char* packet, unsigned packetSize) {
   if (!fGS->output(envir(), fGS->ttl(), packet, packetSize)) success = False;
 
   // Also, send over each of our TCP sockets:
-  for (tcpStreamRecord* streams = fTCPStreams; streams != NULL;
-       streams = streams->fNext) {
+  tcpStreamRecord* nextStream;
+  for (tcpStreamRecord* stream = fTCPStreams; stream != NULL; stream = nextStream) {
+    nextStream = stream->fNext; // Set this now, in case the following deletes "stream":
     if (!sendRTPorRTCPPacketOverTCP(packet, packetSize,
-				    streams->fStreamSocketNum, streams->fStreamChannelId)) {
+				    stream->fStreamSocketNum, stream->fStreamChannelId)) {
       success = False;
     }
   }
@@ -345,7 +356,8 @@ Boolean RTPInterface::sendDataOverTCP(int socketNum, u_int8_t const* data, unsig
       sendResult = send(socketNum, (char const*)(&data[numBytesSentSoFar]), numBytesRemainingToSend, 0/*flags*/);
       if ((unsigned)sendResult != numBytesRemainingToSend) {
 	// The blocking "send()" failed, or timed out.  In either case, we assume that the
-	// TCP connection has failed (or is 'hanging' indefinitely), and we stop using it.
+	// TCP connection has failed (or is 'hanging' indefinitely), and we stop using it
+	// (for both RTP and RTP).
 	// (If we kept using the socket here, the RTP or RTCP packet write would be in an
 	//  incomplete, inconsistent state.)
 #ifdef DEBUG_SEND
@@ -355,8 +367,14 @@ Boolean RTPInterface::sendDataOverTCP(int socketNum, u_int8_t const* data, unsig
 	return False;
       }
       makeSocketNonBlocking(socketNum);
+
       return True;
+    } else if (sendResult < 0) {
+      // Because the "send()" call failed, assume that the socket is now unusable, so stop
+      // using it (for both RTP and RTCP):
+      removeStreamSocket(socketNum, 0xFF);
     }
+
     return False;
   }
 
@@ -434,7 +452,7 @@ void SocketDescriptor
 #endif
   fSubChannelHashTable->Remove((char const*)(long)streamChannelId);
 
-  if (fSubChannelHashTable->IsEmpty()) {
+  if (fSubChannelHashTable->IsEmpty() || streamChannelId == 0xFF) {
     // No more interfaces are using us, so it's curtains for us now:
     if (fAreInReadHandlerLoop) {
       fDeleteMyselfNext = True; // we can't delete ourself yet, but we'll do so from "tcpReadHandler()" below
