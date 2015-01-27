@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2015 Live Networks, Inc.  All rights reserved.
 // A data structure that represents a session that consists of
 // potentially multiple (audio and/or video) sub-sessions
 // (This data structure is used for media *receivers* - i.e., clients.
@@ -216,6 +216,8 @@ public:
 
   // General SDP attribute accessor functions:
   char const* attrVal_str(char const* attrName) const;
+      // returns "" if attribute doesn't exist (and has no default value), or is not a string
+  char const* attrVal_strToLower(char const* attrName) const;
       // returns "" if attribute doesn't exist (and has no default value), or is not a string
   unsigned attrVal_int(char const* attrName) const;
       // also returns 0 if attribute doesn't exist (and has no default value)
