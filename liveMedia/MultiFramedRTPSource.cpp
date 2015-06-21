@@ -105,6 +105,10 @@ Boolean MultiFramedRTPSource
 }
 
 void MultiFramedRTPSource::doStopGettingFrames() {
+  if (fPacketReadInProgress != NULL) {
+    fReorderingBuffer->freePacket(fPacketReadInProgress);
+    fPacketReadInProgress = NULL;
+  }
   envir().taskScheduler().unscheduleDelayedTask(nextTask());
   fRTPInterface.stopNetworkReading();
   fReorderingBuffer->reset();
@@ -145,7 +149,7 @@ void MultiFramedRTPSource::doGetNextFrame1() {
 	// Something's wrong with the header; reject the packet:
 	fReorderingBuffer->releaseUsedPacket(nextPacket);
 	fNeedDelivery = True;
-	break;
+	continue;
       }
       nextPacket->skip(specialHeaderSize);
     }
@@ -168,7 +172,7 @@ void MultiFramedRTPSource::doGetNextFrame1() {
       // This packet is unusable; reject it:
       fReorderingBuffer->releaseUsedPacket(nextPacket);
       fNeedDelivery = True;
-      break;
+      continue;
     }
 
     // The packet is usable. Deliver all or part of it to our caller:
@@ -184,7 +188,7 @@ void MultiFramedRTPSource::doGetNextFrame1() {
       fReorderingBuffer->releaseUsedPacket(nextPacket);
     }
 
-    if (fCurrentPacketCompletesFrame) {
+    if (fCurrentPacketCompletesFrame && fFrameSize > 0) {
       // We have all the data that the client wants.
       if (fNumTruncatedBytes > 0) {
 	envir() << "MultiFramedRTPSource::doGetNextFrame1(): The total received frame size exceeds the client's buffer size ("
@@ -235,8 +239,8 @@ void MultiFramedRTPSource::networkReadHandler1() {
     struct sockaddr_in fromAddress;
     Boolean packetReadWasIncomplete = fPacketReadInProgress != NULL;
     if (!bPacket->fillInData(fRTPInterface, fromAddress, packetReadWasIncomplete)) {
-      if (bPacket->bytesAvailable() == 0) {
-	envir() << "MultiFramedRTPSource error: Hit limit when reading incoming packet over TCP. Increase \"MAX_PACKET_SIZE\"\n";
+      if (bPacket->bytesAvailable() == 0) { // should not happen??
+	envir() << "MultiFramedRTPSource internal error: Hit limit when reading incoming packet over TCP\n";
       }
       fPacketReadInProgress = NULL;
       break;
@@ -338,7 +342,7 @@ void MultiFramedRTPSource::networkReadHandler1() {
 
 ////////// BufferedPacket and BufferedPacketFactory implementation /////
 
-#define MAX_PACKET_SIZE 20000
+#define MAX_PACKET_SIZE 65536
 
 BufferedPacket::BufferedPacket()
   : fPacketSize(MAX_PACKET_SIZE),

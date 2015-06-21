@@ -34,7 +34,7 @@ public:
   ProxyServerMediaSubsession(MediaSubsession& mediaSubsession);
   virtual ~ProxyServerMediaSubsession();
 
-  char const* codecName() const { return fClientMediaSubsession.codecName(); }
+  char const* codecName() const { return fCodecName; }
 
 private: // redefined virtual functions
   virtual FramedSource* createNewStreamSource(unsigned clientSessionId,
@@ -53,6 +53,7 @@ private:
 private:
   friend class ProxyRTSPClient;
   MediaSubsession& fClientMediaSubsession; // the 'client' media subsession object that corresponds to this 'server' media subsession
+  char const* fCodecName;  // copied from "fClientMediaSubsession" once it's been set up
   ProxyServerMediaSubsession* fNext; // used when we're part of a queue
   Boolean fHaveSetupStream;
 };
@@ -112,7 +113,9 @@ ProxyServerMediaSession::~ProxyServerMediaSession() {
   }
 
   // Begin by sending a "TEARDOWN" command (without checking for a response):
-  if (fProxyRTSPClient != NULL) fProxyRTSPClient->sendTeardownCommand(*fClientMediaSession, NULL, fProxyRTSPClient->auth());
+  if (fProxyRTSPClient != NULL && fClientMediaSession != NULL) {
+    fProxyRTSPClient->sendTeardownCommand(*fClientMediaSession, NULL, fProxyRTSPClient->auth());
+  }
 
   // Then delete our state:
   Medium::close(fClientMediaSession);
@@ -177,6 +180,11 @@ static void continueAfterSETUP(RTSPClient* rtspClient, int resultCode, char* res
   if (resultCode == 0) {
     ((ProxyRTSPClient*)rtspClient)->continueAfterSETUP();
   }
+  delete[] resultString;
+}
+
+static void continueAfterPLAY(RTSPClient* rtspClient, int resultCode, char* resultString) {
+  ((ProxyRTSPClient*)rtspClient)->continueAfterPLAY(resultCode);
   delete[] resultString;
 }
 
@@ -317,7 +325,7 @@ void ProxyRTSPClient::continueAfterSETUP() {
     if (fNumSetupsDone >= smss->fParentSession->numSubsessions()) {
       // We've now finished setting up each of our subsessions (i.e., 'tracks').
       // Continue by sending a "PLAY" command (an 'aggregate' "PLAY" command, on the whole session):
-      sendPlayCommand(smss->fClientMediaSubsession.parentSession(), NULL, -1.0f, -1.0f, 1.0f, fOurAuthenticator);
+      sendPlayCommand(smss->fClientMediaSubsession.parentSession(), ::continueAfterPLAY, -1.0f, -1.0f, 1.0f, fOurAuthenticator);
           // the "-1.0f" "start" parameter causes the "PLAY" to be sent without a "Range:" header, in case we'd already done
           // a "PLAY" before (as a result of a 'subsession timeout' (note below))
       fLastCommandWasPLAY = True;
@@ -329,6 +337,14 @@ void ProxyRTSPClient::continueAfterSETUP() {
       fSubsessionTimerTask
 	= envir().taskScheduler().scheduleDelayedTask(SUBSESSION_TIMEOUT_SECONDS*MILLION, (TaskFunc*)subsessionTimeout, this);
     }
+  }
+}
+
+void ProxyRTSPClient::continueAfterPLAY(int resultCode) {
+  if (resultCode != 0) {
+    // The "PLAY" command failed, so reset the connection with the 'back-end' server and start over,
+    // just as if a periodic 'liveness' check with the 'back-end' server had failed:
+    continueAfterLivenessCommand(resultCode, fServerSupportsGetParameter);
   }
 }
 
@@ -398,7 +414,7 @@ void ProxyRTSPClient::subsessionTimeout(void* clientData) {
 void ProxyRTSPClient::handleSubsessionTimeout() {
   // We still have one or more subsessions ('tracks') left to "SETUP".  But we can't wait any longer for them.  Send a "PLAY" now:
   MediaSession* sess = fOurServerMediaSession.fClientMediaSession;
-  if (sess != NULL) sendPlayCommand(*sess, NULL, -1.0f, -1.0f, 1.0f, fOurAuthenticator);
+  if (sess != NULL) sendPlayCommand(*sess, ::continueAfterPLAY, -1.0f, -1.0f, 1.0f, fOurAuthenticator);
   fLastCommandWasPLAY = True;
 }
 
@@ -407,7 +423,8 @@ void ProxyRTSPClient::handleSubsessionTimeout() {
 
 ProxyServerMediaSubsession::ProxyServerMediaSubsession(MediaSubsession& mediaSubsession)
   : OnDemandServerMediaSubsession(mediaSubsession.parentSession().envir(), True/*reuseFirstSource*/),
-    fClientMediaSubsession(mediaSubsession), fNext(NULL), fHaveSetupStream(False) {
+    fClientMediaSubsession(mediaSubsession), fCodecName(strDup(mediaSubsession.codecName())),
+    fNext(NULL), fHaveSetupStream(False) {
 }
 
 UsageEnvironment& operator<<(UsageEnvironment& env, const ProxyServerMediaSubsession& psmss) { // used for debugging
@@ -418,6 +435,8 @@ ProxyServerMediaSubsession::~ProxyServerMediaSubsession() {
   if (verbosityLevel() > 0) {
     envir() << *this << "::~ProxyServerMediaSubsession()\n";
   }
+
+  delete[] (char*)fCodecName;
 }
 
 FramedSource* ProxyServerMediaSubsession::createNewStreamSource(unsigned clientSessionId, unsigned& estBitrate) {
@@ -501,7 +520,7 @@ FramedSource* ProxyServerMediaSubsession::createNewStreamSource(unsigned clientS
       // have been called here), so we know that the substream was previously "PAUSE"d.  Send "PLAY" downstream once again,
       // to resume the stream:
       if (!proxyRTSPClient->fLastCommandWasPLAY) { // so that we send only one "PLAY"; not one for each subsession
-	proxyRTSPClient->sendPlayCommand(fClientMediaSubsession.parentSession(), NULL, -1.0f/*resume from previous point*/,
+	proxyRTSPClient->sendPlayCommand(fClientMediaSubsession.parentSession(), ::continueAfterPLAY, -1.0f/*resume from previous point*/,
 					 -1.0f, 1.0f, proxyRTSPClient->auth());
 	proxyRTSPClient->fLastCommandWasPLAY = True;
       }
@@ -668,7 +687,9 @@ void ProxyServerMediaSubsession::subsessionByeHandler() {
 
   // This "BYE" signals that our input source has (effectively) closed, so pass this onto the front-end clients:
   fHaveSetupStream = False; // hack to stop "PAUSE" getting sent by:
-  fClientMediaSubsession.readSource()->handleClosure();
+  if (fClientMediaSubsession.readSource() != NULL) {
+    fClientMediaSubsession.readSource()->handleClosure();
+  }
 
   // And then treat this as if we had lost connection to the back-end server,
   // and can reestablish streaming from it only by sending another "DESCRIBE":
