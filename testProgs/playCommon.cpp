@@ -790,7 +790,7 @@ void continueAfterSETUP(RTSPClient* client, int resultCode, char* resultString) 
   }
   delete[] resultString;
 
-  sessionTimeoutParameter = client->sessionTimeoutParameter();
+  if (client != NULL) sessionTimeoutParameter = client->sessionTimeoutParameter();
 
   // Set up the next subsession, if any:
   setupStreams();
