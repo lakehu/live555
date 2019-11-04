@@ -25,10 +25,10 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 
 H264or5VideoStreamDiscreteFramer
 ::H264or5VideoStreamDiscreteFramer(int hNumber, UsageEnvironment& env, FramedSource* inputSource,
-				   Boolean includeStartCodeInOutput)
+				   Boolean includeStartCodeInOutput,
+				   Boolean insertAccessUnitDelimiters)
   : H264or5VideoStreamFramer(hNumber, env, inputSource, False/*don't create a parser*/,
-			     includeStartCodeInOutput),
-    fIncludeStartCodeInOutput(includeStartCodeInOutput) {
+			     includeStartCodeInOutput, insertAccessUnitDelimiters) {
 }
 
 H264or5VideoStreamDiscreteFramer::~H264or5VideoStreamDiscreteFramer() {
