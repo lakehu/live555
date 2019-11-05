@@ -166,7 +166,7 @@ void H264or5VideoStreamFramer::doGetNextFrame() {
       *fTo++ = 9; // "Access unit delimiter" nal_unit_type
       *fTo++ = 0xF0; // "primary_pic_type" (7); "rbsp_trailing_bits()"
     } else { // H.265
-      *fTo++ = 35<<1;
+      *fTo++ = 35<<1; // "Access unit delimiter" nal_unit_type
       *fTo++ = 0; // "nuh_layer_id" (0); "nuh_temporal_id_plus1" (0) (Is this correct??)
       *fTo++ = 0x50; // "pic_type" (2); "rbsp_trailing_bits()" (Is this correct??)
     }
