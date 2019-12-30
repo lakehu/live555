@@ -299,6 +299,7 @@ void segmentationCallback(void* /*clientData*/,
   fprintf(ourM3U8Fid,
 	  "#EXTM3U\n"
 	  "#EXT-X-VERSION:3\n"
+	  "#EXT-X-INDEPENDENT-SEGMENTS\n"
 	  "#EXT-X-TARGETDURATION:%u\n"
 	  "#EXT-X-MEDIA-SEQUENCE:%u\n",
 	  OUR_HLS_SEGMENTATION_DURATION,
