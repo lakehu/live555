@@ -85,7 +85,7 @@ static Boolean parseKeyDataSubPayload(u_int8_t const*& ptr, u_int8_t const* endP
   Boolean hasSalt = Type == 1 || Type == 3;
   
   fprintf(stderr, "\t\tKey Validity: %d (%s)\n", KV,
-xs	  KV == 0 ? "NULL" : KV == 1 ? "SPI/MKI" : KV == 2 ? "Interval" : "unknown");
+	  KV == 0 ? "NULL" : KV == 1 ? "SPI/MKI" : KV == 2 ? "Interval" : "unknown");
   Boolean hasKV = KV != 0;
 
   u_int16_t keyDataLen = get2Bytes(ptr);
