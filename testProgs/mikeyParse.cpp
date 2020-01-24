@@ -5,20 +5,20 @@
 #include <Base64.hh>
 #include <NetCommon.h>
 
-static unsigned get4Bytes(unsigned char const*& ptr) {
-  unsigned result = (ptr[0]<<24)|(ptr[1]<<16)|(ptr[2]<<8)|ptr[3];
+static u_int32_t get4Bytes(u_int8_t const*& ptr) {
+  u_int32_t result = (ptr[0]<<24)|(ptr[1]<<16)|(ptr[2]<<8)|ptr[3];
   ptr += 4;
   return result;
 }
 
-static unsigned get2Bytes(unsigned char const*& ptr) {
-  unsigned short result = (ptr[0]<<8)|ptr[1];
+static u_int16_t get2Bytes(u_int8_t const*& ptr) {
+  u_int16_t result = (ptr[0]<<8)|ptr[1];
   ptr += 2;
   return result;
 }
 
-static unsigned char getByte(unsigned char const*& ptr) {
-  unsigned char result = ptr[0];
+static u_int8_t getByte(u_int8_t const*& ptr) {
+  u_int8_t result = ptr[0];
   ptr += 1;
   return result;
 }
