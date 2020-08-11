@@ -1507,6 +1507,10 @@ void MatroskaFileParser::seekToEndOfFile() {
 void MatroskaFileParser::resetStateAfterSeeking() {
   if (fOurDemux != NULL) fOurDemux->resetStateAfterSeeking();
 
+  // Presentation times aren't affected by the seek; they continue advancing as normal.
+  // Therefore, ensure that they continue to be aligned with 'wall clock' time:
+  fPresentationTimeOffset = 0.0;
+
   // Because we're resuming parsing after seeking to a new position in the file, reset the parser state:
   fCurOffsetInFile = fSavedCurOffsetInFile = 0;
   fCurOffsetWithinFrame = fSavedCurOffsetWithinFrame = 0;
