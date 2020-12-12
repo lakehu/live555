@@ -172,7 +172,6 @@ private:
 };
 
 
-Boolean IsMulticastAddress(netAddressBits address); // eventually remove for IPv6, in favor of:
 Boolean IsMulticastAddress(struct sockaddr_storage const& address);
 
 

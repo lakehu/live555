@@ -96,9 +96,11 @@ void copyAddress(struct sockaddr_storage& to, NetAddress const* from) {
   if (from == NULL) return;
 
   if (from->length() == sizeof (ipv4AddressBits)) {
+    to.ss_len = sizeof (struct sockaddr_in);
     to.ss_family = AF_INET;
     ((sockaddr_in&)to).sin_addr.s_addr = *(ipv4AddressBits*)(from->data());
-  } else {
+  } else { // IPv6
+    to.ss_len = sizeof (struct sockaddr_in6);
     to.ss_family = AF_INET6;
     for (unsigned i = 0; i < 16; ++i) {
       ((sockaddr_in6&)to).sin6_addr.s6_addr[i] = (from->data())[i];
@@ -365,11 +367,16 @@ Boolean IsMulticastAddress(netAddressBits address) {
 Boolean IsMulticastAddress(struct sockaddr_storage const& address) {
   switch (address.ss_family) {
     case AF_INET: {
-      return IsMulticastAddress(((sockaddr_in const&)address).sin_addr.s_addr);
+      ipv4AddressBits addressInNetworkOrder
+	= htonl(((sockaddr_in const&)address).sin_addr.s_addr);
+      // Note: We return False for addresses in the range 224.0.0.0
+      // through 224.0.0.255, because these are non-routable
+      return addressInNetworkOrder >  0xE00000FF &&
+	addressInNetworkOrder <= 0xEFFFFFFF;
     }
     case AF_INET6: {
-      // An IPv6 address is multicast if the top two bits are 1:
-      return (((sockaddr_in6 const&)address).sin6_addr.s6_addr[0] & 0xC0) == 0xC0;
+      // An IPv6 address is multicast if the first byte is 0xFF:
+      return ((sockaddr_in6 const&)address).sin6_addr.s6_addr[0] == 0xFF;
     }
     default: {
       return False;

@@ -62,17 +62,17 @@ Boolean makeSocketBlocking(int sock, unsigned writeTimeoutInMilliseconds = 0);
 Boolean setSocketKeepAlive(int sock);
 
 Boolean socketJoinGroup(UsageEnvironment& env, int socket,
-			netAddressBits groupAddress);
+			struct sockaddr_storage const& groupAddress);
 Boolean socketLeaveGroup(UsageEnvironment&, int socket,
-			 netAddressBits groupAddress);
+			 struct sockaddr_storage const& groupAddress);
 
 // source-specific multicast join/leave
 Boolean socketJoinGroupSSM(UsageEnvironment& env, int socket,
-			   netAddressBits groupAddress,
-			   netAddressBits sourceFilterAddr);
+			   struct sockaddr_storage const& groupAddress,
+			   struct sockaddr_storage const& sourceFilterAddr);
 Boolean socketLeaveGroupSSM(UsageEnvironment&, int socket,
-			    netAddressBits groupAddress,
-			    netAddressBits sourceFilterAddr);
+			    struct sockaddr_storage const& groupAddress,
+			    struct sockaddr_storage const& sourceFilterAddr);
 
 Boolean getSourcePort(UsageEnvironment& env, int socket, Port& port);
 
