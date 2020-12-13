@@ -47,8 +47,7 @@ void GroupEId::init(struct sockaddr_storage const& groupAddr,
 		    portNumBits portNum,
 		    u_int8_t ttl) {
   fGroupAddress = groupAddr;
-  ((sockaddr_in&)fGroupAddress).sin_port = portNum; // same position for IPv6
-  
+  setPortNum(fGroupAddress, portNum);
   fSourceFilterAddress = sourceFilterAddr;
 
   fTTL = ttl;

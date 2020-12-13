@@ -630,13 +630,13 @@ Boolean socketLeaveGroupSSM(UsageEnvironment& /*env*/, int socket,
 }
 
 static Boolean getSourcePort0(int socket, portNumBits& resultPortNum/*host order*/) {
-  sockaddr_storage test;
-  ((sockaddr_in&)test).sin_port = 0; // same position for both IPv4 and IPv6
+  sockaddr_storage testAddr;
+  setPortNum(testAddr, 0);
 
-  SOCKLEN_T len = sizeof test;
-  if (getsockname(socket, (struct sockaddr*)&test, &len) < 0) return False;
+  SOCKLEN_T len = sizeof testAddr;
+  if (getsockname(socket, (struct sockaddr*)&testAddr, &len) < 0) return False;
 
-  resultPortNum = ntohs(portNum(test));
+  resultPortNum = ntohs(portNum(testAddr));
   return True;
 }
 
@@ -814,16 +814,16 @@ netAddressBits ourIPAddress(UsageEnvironment& env) {
   return ourAddress;
 }
 
-netAddressBits chooseRandomIPv4SSMAddress(UsageEnvironment& env) {
+ipv4AddressBits chooseRandomIPv4SSMAddress(UsageEnvironment& env) {
   // First, a hack to ensure that our random number generator is seeded:
   (void) ourIPAddress(env);
 
   // Choose a random address in the range [232.0.1.0, 232.255.255.255)
   // i.e., [0xE8000100, 0xE8FFFFFF)
-  netAddressBits const first = 0xE8000100, lastPlus1 = 0xE8FFFFFF;
-  netAddressBits const range = lastPlus1 - first;
+  ipv4AddressBits const first = 0xE8000100, lastPlus1 = 0xE8FFFFFF;
+  ipv4AddressBits const range = lastPlus1 - first;
 
-  return ntohl(first + ((netAddressBits)our_random())%range);
+  return ntohl(first + ((ipv4AddressBits)our_random())%range);
 }
 
 char const* timestampString() {
