@@ -78,8 +78,11 @@ Boolean getSourcePort(UsageEnvironment& env, int socket, int domain, Port& port)
 
 ipv4AddressBits ourIPv4Address(UsageEnvironment& env); // in network order
 ipv6AddressBits const& ourIPv6Address(UsageEnvironment& env);
+
+Boolean weHaveAnIPv4Address(UsageEnvironment& env);
+Boolean weHaveAnIPv6Address(UsageEnvironment& env);
 Boolean weHaveAnIPAddress(UsageEnvironment& env);
-  // returns True if we have neither an IPv4 or an IPv6 address
+  // returns True if we have either an IPv4 or an IPv6 address
 
 // IPv4 addresses of our sending and receiving interfaces.  (By default, these
 // are INADDR_ANY (i.e., 0), specifying the default interface.)
