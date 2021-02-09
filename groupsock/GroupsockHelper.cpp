@@ -856,8 +856,8 @@ static void copyAddress(struct sockaddr_storage& to, struct sockaddr const* from
   
   switch (from->sa_family) {
     case AF_INET: {
-      if (from->sa_len < sizeof (struct sockaddr_in)) return; // sanity check
 #ifdef HAVE_SOCKADDR_LEN
+      if (from->sa_len < sizeof (struct sockaddr_in)) return; // sanity check
       to.ss_len = sizeof (struct sockaddr_in);
 #endif
       to.ss_family = AF_INET;
@@ -865,8 +865,8 @@ static void copyAddress(struct sockaddr_storage& to, struct sockaddr const* from
       break;
     }
     case AF_INET6: {
-      if (from->sa_len < sizeof (struct sockaddr_in6)) return; // sanity check
 #ifdef HAVE_SOCKADDR_LEN
+      if (from->sa_len < sizeof (struct sockaddr_in6)) return; // sanity check
       to.ss_len = sizeof (struct sockaddr_in6);
 #endif
       to.ss_family = AF_INET6;
