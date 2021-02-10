@@ -177,6 +177,11 @@ int setupDatagramSocket(UsageEnvironment& env, Port port, int domain) {
 #endif
   } else { // IPv6
     if (port.num() != 0) {
+      // For IPv6 sockets, we need the IPV6_V6ONLY flag set to 1, otherwise we would not
+      // be able to have an IPv4 socket and an IPv6 socket bound to the same port:
+      int const one = 1;
+      (void)setsockopt(newSocket, IPPROTO_IPV6, IPV6_V6ONLY, &one, sizeof one);
+
       MAKE_SOCKADDR_IN6(name, port.num());
       if (bind(newSocket, (struct sockaddr*)&name, sizeof name) != 0) {
 	char tmpBuffer[100];
@@ -343,6 +348,11 @@ int setupStreamSocket(UsageEnvironment& env, Port port, int domain,
 #endif
   } else { // IPv6
     if (port.num() != 0) {
+      // For IPv6 sockets, we need the IPV6_V6ONLY flag set to 1, otherwise we would not
+      // be able to have an IPv4 socket and an IPv6 socket bound to the same port:
+      int const one = 1;
+      (void)setsockopt(newSocket, IPPROTO_IPV6, IPV6_V6ONLY, &one, sizeof one);
+
       MAKE_SOCKADDR_IN6(name, port.num());
       if (bind(newSocket, (struct sockaddr*)&name, sizeof name) != 0) {
 	char tmpBuffer[100];

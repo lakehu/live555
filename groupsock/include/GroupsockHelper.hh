@@ -112,8 +112,8 @@ char const* timestampString();
     SET_SOCKADDR_SIN_LEN(var);
 #define MAKE_SOCKADDR_IN6(var,prt) /*adr,prt must be in network order*/\
     struct sockaddr_in6 var;\
+    memset(&var, 0, sizeof var);\
     var.sin6_family = AF_INET6;\
-    for (unsigned i = 0; i < 16; ++i) var.sin6_addr.s6_addr[i] = 0;\
     var.sin6_port = (prt);\
     SET_SOCKADDR_SIN6_LEN(var);
 
