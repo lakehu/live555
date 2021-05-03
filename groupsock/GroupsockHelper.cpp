@@ -907,7 +907,7 @@ void getOurIPAddresses(UsageEnvironment& env) {
       if ((p->ifa_flags&IFF_UP) == 0 || (p->ifa_flags&IFF_LOOPBACK) != 0) continue;
 
       // Also ignore the interface if the address is considered 'bad' for us:
-      if (isBadAddressForUs(*p->ifa_addr)) continue;
+      if (p->ifa_addr == NULL || isBadAddressForUs(*p->ifa_addr)) continue;
       
       // We take the first IPv4 and first IPv6 addresses:
       if (p->ifa_addr->sa_family == AF_INET && addressIsNull(foundIPv4Address)) {
