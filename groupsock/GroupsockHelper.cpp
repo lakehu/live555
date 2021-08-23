@@ -393,6 +393,10 @@ int readSocket(UsageEnvironment& env,
 			   (struct sockaddr*)&fromAddress,
 			   &addressSize);
   if (bytesRead < 0) {
+    fromAddress.ss_family = AF_INET;
+    ((sockaddr_in&)fromAddress).sin_addr.s_addr = 0;
+    ((sockaddr_in&)fromAddress).sin_port = 0;
+
     //##### HACK to work around bugs in Linux and Windows:
     int err = env.getErrno();
     if (err == 111 /*ECONNREFUSED (Linux)*/
@@ -408,10 +412,6 @@ int readSocket(UsageEnvironment& env,
 	|| err == EAGAIN
 #endif
 	|| err == 113 /*EHOSTUNREACH (Linux)*/) { // Why does Linux return this for datagram sock?
-      fromAddress.ss_family = AF_INET;
-      ((sockaddr_in&)fromAddress).sin_addr.s_addr = 0;
-      ((sockaddr_in&)fromAddress).sin_port = 0;
-
       return 0;
     }
     //##### END HACK
