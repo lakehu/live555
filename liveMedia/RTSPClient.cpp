@@ -398,7 +398,8 @@ RTSPClient::RTSPClient(UsageEnvironment& env, char const* rtspURL,
     fAllowBasicAuthentication(True), fTunnelOverHTTPPortNum(tunnelOverHTTPPortNum),
     fUserAgentHeaderStr(NULL), fUserAgentHeaderStrLen(0),
     fInputSocketNum(-1), fOutputSocketNum(-1), fBaseURL(NULL), fTCPStreamIdCount(0),
-    fLastSessionId(NULL), fSessionTimeoutParameter(0), fSessionCookieCounter(0), fHTTPTunnelingConnectionIsPending(False),
+    fLastSessionId(NULL), fSessionTimeoutParameter(0), fRequireStr(NULL),
+    fSessionCookieCounter(0), fHTTPTunnelingConnectionIsPending(False),
     fTLS(*this) {
   setBaseURL(rtspURL);
 
