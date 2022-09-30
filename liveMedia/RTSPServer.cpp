@@ -158,17 +158,26 @@ UserAuthenticationDatabase* RTSPServer::getAuthenticationDatabaseForCommand(char
   return fAuthDB;
 }
 
-Boolean RTSPServer::specialClientAccessCheck(int /*clientSocket*/, struct sockaddr_storage const& /*clientAddr*/, char const* /*urlSuffix*/) {
+Boolean RTSPServer::specialClientAccessCheck(int /*clientSocket*/,
+					     struct sockaddr_storage const& /*clientAddr*/,
+					     char const* /*urlSuffix*/) {
   // default implementation
   return True;
 }
 
-Boolean RTSPServer::specialClientUserAccessCheck(int /*clientSocket*/, struct sockaddr_storage const& /*clientAddr*/,
+Boolean RTSPServer::specialClientUserAccessCheck(int /*clientSocket*/,
+						 struct sockaddr_storage const& /*clientAddr*/,
 						 char const* /*urlSuffix*/, char const * /*username*/) {
   // default implementation; no further access restrictions:
   return True;
 }
 
+void RTSPServer
+::specialHandlingOfAuthenticationFailure(int /*clientSocket*/,
+					 struct sockaddr_storage const& /*clientAddr*/,
+					 char const* /*urlSuffix*/) {
+  // default implementation: do nothing
+}
 
 RTSPServer::RTSPServer(UsageEnvironment& env,
 		       int ourSocketIPv4, int ourSocketIPv6, Port ourPort,
@@ -1143,6 +1152,7 @@ Boolean RTSPServer::RTSPClientConnection
 	   fCurrentCSeq,
 	   dateHeader(),
 	   fCurrentAuthenticator.realm(), fCurrentAuthenticator.nonce());
+  fOurRTSPServer.specialHandlingOfAuthenticationFailure(fClientInputSocket, fClientAddr, urlSuffix);
   return False;
 }
 
