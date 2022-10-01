@@ -1143,6 +1143,7 @@ Boolean RTSPServer::RTSPClientConnection
   
   // If we get here, we failed to authenticate the user.
   // Send back a "401 Unauthorized" response, with a new random nonce:
+  Boolean isInitial401 = fCurrentAuthenticator.nonce() == NULL;
   fCurrentAuthenticator.setRealmAndRandomNonce(authDB->realm());
   snprintf((char*)fResponseBuffer, sizeof fResponseBuffer,
 	   "RTSP/1.0 401 Unauthorized\r\n"
@@ -1152,7 +1153,9 @@ Boolean RTSPServer::RTSPClientConnection
 	   fCurrentCSeq,
 	   dateHeader(),
 	   fCurrentAuthenticator.realm(), fCurrentAuthenticator.nonce());
-  fOurRTSPServer.specialHandlingOfAuthenticationFailure(fClientInputSocket, fClientAddr, urlSuffix);
+  if (!isInitial401) { // this is an actual authentication failure
+    fOurRTSPServer.specialHandlingOfAuthenticationFailure(fClientInputSocket, fClientAddr, urlSuffix);
+  }
   return False;
 }
 
