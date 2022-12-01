@@ -1643,9 +1643,6 @@ void RTSPClient::connectionHandler1() {
       break;
     }
 
-    // The connection succeeded.  If the connection came about from an attempt to set up RTSP-over-HTTP, finish this now:
-    if (fHTTPTunnelingConnectionIsPending && !setupHTTPTunneling2()) break;
-
     // Note: Normally "fOutputTLS" == "fInputTLS" here, except when we're connecting
     // to the second (i.e., "POST") connection when doing RTSP-over-HTTP:
     if (fOutputTLS->isNeeded) {
@@ -1661,6 +1658,9 @@ void RTSPClient::connectionHandler1() {
 	return;
       }
     }
+
+    // The connection succeeded.  If the connection came about from an attempt to set up RTSP-over-HTTP, finish this now:
+    if (fHTTPTunnelingConnectionIsPending && !setupHTTPTunneling2()) break;
 
     // The connection is complete.  Resume sending all pending requests:
     if (fVerbosityLevel >= 1) envir() << "...remote connection opened\n";
