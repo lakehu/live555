@@ -14,12 +14,15 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // Version information for the "BasicUsageEnvironment" library
-// Copyright (c) 1996-2023 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2024 Live Networks, Inc.  All rights reserved.
 
 #ifndef _BASICUSAGEENVIRONMENT_VERSION_HH
 #define _BASICUSAGEENVIRONMENT_VERSION_HH
 
-#define BASICUSAGEENVIRONMENT_LIBRARY_VERSION_STRING	"2023.01.19"
-#define BASICUSAGEENVIRONMENT_LIBRARY_VERSION_INT		1674086400
+#define BASICUSAGEENVIRONMENT_LIBRARY_VERSION_STRING	"2024.05.15"
+#define BASICUSAGEENVIRONMENT_LIBRARY_VERSION_INT		1715731200
+
+extern char const* const BasicUsageEnvironmentLibraryVersionStr;
+extern int const BasicUsageEnvironmentLibraryVersionInt;
 
 #endif
