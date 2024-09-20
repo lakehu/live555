@@ -52,6 +52,7 @@ static void onOggDemuxCreation(OggFileServerDemux* newDemux, void* /*clientData*
   newDemuxWatchVariable = 1;
 }
 
+#define SERVER_USE_TLS 1 //#####@@@@@
 int main(int argc, char** argv) {
   // Begin by setting up our usage environment:
   TaskScheduler* scheduler = BasicTaskScheduler::createNew();
@@ -82,7 +83,7 @@ int main(int argc, char** argv) {
 #ifndef STREAM_USING_SRTP
 #define STREAM_USING_SRTP True
 #endif
-  rtspServer->setTLSState(PATHNAME_TO_CERTIFICATE_FILE, PATHNAME_TO_PRIVATE_KEY_FILE,
+  rtspServer->setTLSState("/home/ec2-user/ca.pem", "/home/ec2-user/cakey.pem",
 			  STREAM_USING_SRTP);
 #endif
 
