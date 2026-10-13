@@ -390,10 +390,10 @@ static Boolean parseRangeAttribute(char const* sdpLine, char*& absStartTime, cha
   char* ae = new char[len];
   int sscanfResult = sscanf(sdpLine, "a=range: clock = %[^-\r\n]-%[^\r\n]", as, ae);
   if (sscanfResult == 2) {
-    absStartTime = as;
-    absEndTime = ae;
+    delete[] absStartTime; absStartTime = as;
+    delete[] absEndTime; absEndTime = ae;
   } else if (sscanfResult == 1) {
-    absStartTime = as;
+    delete[] absStartTime; absStartTime = as;
     delete[] ae;
   } else {
     delete[] as; delete[] ae;
@@ -1490,8 +1490,10 @@ Boolean MediaSubsession::createSourceObjects(int useSpecialRTPoffset) {
 ////////// SDPAttribute implementation //////////
 
 SDPAttribute::SDPAttribute(char const* strValue, Boolean valueIsHexadecimal)
-  : fStrValue(strDup(strValue)), fStrValueToLower(NULL), fValueIsHexadecimal(valueIsHexadecimal) {
+  : fStrValue(strDup(strValue)), fStrValueToLower(NULL),
+    fIntValue(0), fValueIsHexadecimal(valueIsHexadecimal) {
   if (fStrValue == NULL) {
+    fStrValue = strDup("");
     // No value was given for this attribute, so consider it to be a Boolean, with value True:
     fIntValue = 1;
   } else {

@@ -628,6 +628,9 @@ void RTSPServer::RTSPClientConnection::handleHTTPCmd_TunnelingGET(char const* se
   // can find us:
   if (fOurRTSPServer.fClientConnectionsForHTTPTunneling == NULL) {
     fOurRTSPServer.fClientConnectionsForHTTPTunneling = HashTable::create(STRING_HASH_KEYS);
+  } else if (fOurSessionCookie != NULL) {
+    // This connection can have only one 'session cookie' in use at one time:
+    fOurRTSPServer.fClientConnectionsForHTTPTunneling->Remove(fOurSessionCookie);
   }
   delete[] fOurSessionCookie; fOurSessionCookie = strDup(sessionCookie);
   fOurRTSPServer.fClientConnectionsForHTTPTunneling->Add(sessionCookie, (void*)this);
@@ -886,36 +889,33 @@ void RTSPServer::RTSPClientConnection::handleRequestBytes(int newBytesRead) {
       } else if (strcmp(cmdName, "DESCRIBE") == 0) {
 	handleCmd_DESCRIBE(urlPreSuffix, urlSuffix, (char const*)fRequestBuffer);
       } else if (strcmp(cmdName, "SETUP") == 0) {
-	Boolean areAuthenticated = True;
+	// First, make sure that we're authenticated to perform this command:
+	char urlTotalSuffix[2*RTSP_PARAM_STRING_MAX];
+	    // enough space for urlPreSuffix/urlSuffix'\0'
+	urlTotalSuffix[0] = '\0';
+	if (urlPreSuffix[0] != '\0') {
+	  strcat(urlTotalSuffix, urlPreSuffix);
+	  strcat(urlTotalSuffix, "/");
+	}
+	strcat(urlTotalSuffix, urlSuffix);
 
-	if (!requestIncludedSessionId) {
-	  // No session id was present in the request.
-	  // So create a new "RTSPClientSession" object for this request.
-
-	  // But first, make sure that we're authenticated to perform this command:
-	  char urlTotalSuffix[2*RTSP_PARAM_STRING_MAX];
-	      // enough space for urlPreSuffix/urlSuffix'\0'
-	  urlTotalSuffix[0] = '\0';
-	  if (urlPreSuffix[0] != '\0') {
-	    strcat(urlTotalSuffix, urlPreSuffix);
-	    strcat(urlTotalSuffix, "/");
-	  }
-	  strcat(urlTotalSuffix, urlSuffix);
-	  if (authenticationOK("SETUP", urlTotalSuffix, (char const*)fRequestBuffer)) {
+	if (authenticationOK("SETUP", urlTotalSuffix, (char const*)fRequestBuffer)) {
+	  if (!requestIncludedSessionId) {
+	    // No session id was present in the request.
+	    // So create a new "RTSPClientSession" object for this request.
 	    clientSession
 	      = (RTSPServer::RTSPClientSession*)fOurRTSPServer.createNewClientSessionWithId();
-	  } else {
-	    areAuthenticated = False;
 	  }
-	}
-	if (clientSession != NULL) {
-	  clientSession->handleCmd_SETUP(this, urlPreSuffix, urlSuffix, (char const*)fRequestBuffer);
-	  playAfterSetup = clientSession->fStreamAfterSETUP;
-	} else if (areAuthenticated) {
+
+	  if (clientSession != NULL) {
+	    clientSession->handleCmd_SETUP(this, urlPreSuffix, urlSuffix, (char const*)fRequestBuffer);
+	    playAfterSetup = clientSession->fStreamAfterSETUP;
+	  } else {
 #ifdef DEBUG
-	  fprintf(stderr, "Calling handleCmd_sessionNotFound() (case 2)\n");
+	    fprintf(stderr, "Calling handleCmd_sessionNotFound() (case 2)\n");
 #endif
-	  handleCmd_sessionNotFound();
+	    handleCmd_sessionNotFound();
+	  }
 	}
       } else if (strcmp(cmdName, "TEARDOWN") == 0
 		 || strcmp(cmdName, "PLAY") == 0
@@ -1312,37 +1312,37 @@ void RTSPServer::RTSPClientSession::reclaimStreamStates() {
 }
 
 typedef enum StreamingMode {
+  UNKNOWN,
   RTP_UDP,
   RTP_TCP,
   RAW_UDP
 } StreamingMode;
 
-static void parseTransportHeader(char const* buf,
-				 StreamingMode& streamingMode,
-				 char*& streamingModeString,
-				 char*& destinationAddressStr,
-				 u_int8_t& destinationTTL,
-				 portNumBits& clientRTPPortNum, // if UDP
-				 portNumBits& clientRTCPPortNum, // if UDP
-				 unsigned char& rtpChannelId, // if TCP
-				 unsigned char& rtcpChannelId // if TCP
-				 ) {
+static Boolean parseTransportHeader(char const* buf,
+				    StreamingMode& streamingMode,
+				    char*& streamingModeString,
+				    char*& destinationAddressStr,
+				    u_int8_t& destinationTTL,
+				    portNumBits& clientRTPPortNum, // if UDP
+				    portNumBits& clientRTCPPortNum, // if UDP
+				    u_int8_t& rtpChannelId, // if TCP
+				    u_int8_t& rtcpChannelId // if TCP
+				    ) {
   // Initialize the result parameters to default values:
-  streamingMode = RTP_UDP;
+  streamingMode = UNKNOWN;
   streamingModeString = NULL;
   destinationAddressStr = NULL;
-  destinationTTL = 255;
+  destinationTTL = 0xFF;
   clientRTPPortNum = 0;
   clientRTCPPortNum = 1;
   rtpChannelId = rtcpChannelId = 0xFF;
   
-  portNumBits p1, p2;
-  unsigned ttl, rtpCid, rtcpCid;
+  unsigned p1, p2, ttl, rtpCid, rtcpCid;
   
   // First, find "Transport:"
   while (1) {
-    if (*buf == '\0') return; // not found
-    if (*buf == '\r' && *(buf+1) == '\n' && *(buf+2) == '\r') return; // end of the headers => not found
+    if (*buf == '\0') return False; // not found
+    if (*buf == '\r' && *(buf+1) == '\n' && *(buf+2) == '\r') return False; // end of the headers => not found
     if (_strncasecmp(buf, "Transport:", 10) == 0) break;
     ++buf;
   }
@@ -1350,35 +1350,69 @@ static void parseTransportHeader(char const* buf,
   // Then, run through each of the fields, looking for ones we handle:
   char const* fields = buf + 10;
   while (*fields == ' ') ++fields;
+
+  Boolean badFieldSeen = True; // until we learn otherwise
+  Boolean ttlSeen = False; Boolean clientPortSeen = False; Boolean interleavedSeen = False;
   char* field = strDupSize(fields);
   while (sscanf(fields, "%[^;\r\n]", field) == 1) {
+    badFieldSeen = True; // until we learn otherwise
     if (strcmp(field, "RTP/AVP/TCP") == 0) {
+      if (streamingMode != UNKNOWN) break; // more than one 'streaming mode' is not allowed
+
       streamingMode = RTP_TCP;
-    } else if (strcmp(field, "RAW/RAW/UDP") == 0 ||
-	       strcmp(field, "MP2T/H2221/UDP") == 0) {
+    } else if (strcmp(field, "RTP/AVP") == 0 || strcmp(field, "RTP/AVP/SAVP") == 0) {
+      if (streamingMode != UNKNOWN) break; // more than one 'streaming mode' is not allowed
+
+      streamingMode = RTP_UDP;
+    } else if (strcmp(field, "RAW/RAW/UDP") == 0 || strcmp(field, "MP2T/H2221/UDP") == 0) {
+      if (streamingMode != UNKNOWN) break; // more than one 'streaming mode' is not allowed
+
       streamingMode = RAW_UDP;
       streamingModeString = strDup(field);
     } else if (_strncasecmp(field, "destination=", 12) == 0) {
-      delete[] destinationAddressStr;
+      if (destinationAddressStr != NULL) { // more than one "destination=" is not allowed
+	delete[] destinationAddressStr; destinationAddressStr = NULL;
+	break;
+      }
+
       destinationAddressStr = strDup(field+12);
-    } else if (sscanf(field, "ttl%u", &ttl) == 1) {
+    } else if (sscanf(field, "ttl=%u", &ttl) == 1) {
+      if (ttlSeen) break; ttlSeen = True;
+      if (ttl > 0xFF) break;
+
       destinationTTL = (u_int8_t)ttl;
-    } else if (sscanf(field, "client_port=%hu-%hu", &p1, &p2) == 2) {
-      clientRTPPortNum = p1;
-      clientRTCPPortNum = streamingMode == RAW_UDP ? 0 : p2; // ignore the second port number if the client asked for raw UDP
-    } else if (sscanf(field, "client_port=%hu", &p1) == 1) {
-      clientRTPPortNum = p1;
-      clientRTCPPortNum = streamingMode == RAW_UDP ? 0 : p1 + 1;
+    } else if (sscanf(field, "client_port=%u-%u", &p1, &p2) == 2) {
+      if (clientPortSeen) break; clientPortSeen = True;
+      if (p1 > 0xFFFF || p2 > 0xFFFF) break;
+
+      clientRTPPortNum = (portNumBits)p1;
+      clientRTCPPortNum = streamingMode == RAW_UDP ? 0 : (portNumBits)p2;
+          // ignore the second port number if the client asked for raw UDP
+    } else if (sscanf(field, "client_port=%u", &p1) == 1) {
+      if (clientPortSeen) break; clientPortSeen = True;
+      if (p1 > 0xFFFF || (p1 == 0xFFFF && streamingMode != RAW_UDP)) break;
+
+      clientRTPPortNum = (portNumBits)p1;
+      clientRTCPPortNum = streamingMode == RAW_UDP ? 0 : (portNumBits)(p1+1);
     } else if (sscanf(field, "interleaved=%u-%u", &rtpCid, &rtcpCid) == 2) {
-      rtpChannelId = (unsigned char)rtpCid;
-      rtcpChannelId = (unsigned char)rtcpCid;
+      if (interleavedSeen) break; interleavedSeen = True;
+      if (rtpCid > 0xFF || rtcpCid > 0xFF) break;
+
+      rtpChannelId = (u_int8_t)rtpCid;
+      rtcpChannelId = (u_int8_t)rtcpCid;
     }
+    badFieldSeen = False;
     
     fields += strlen(field);
     while (*fields == ';' || *fields == ' ' || *fields == '\t') ++fields; // skip over separating ';' chars or whitespace
     if (*fields == '\0' || *fields == '\r' || *fields == '\n') break;
   }
   delete[] field;
+
+  if (badFieldSeen) return False;
+  if (streamingMode == UNKNOWN) return False; // no 'streaming mode' was specified
+
+  return True;
 }
 
 static Boolean parsePlayNowHeader(char const* buf) {
@@ -1579,15 +1613,6 @@ void RTSPServer::RTSPClientSession
     }
     // ASSERT: subsession != NULL
     
-    void*& token = fStreamStates[trackNum].streamToken; // alias
-    if (token != NULL) {
-      // We already handled a "SETUP" for this track (to the same client),
-      // so stop any existing streaming of it, before we set it up again:
-      subsession->pauseStream(fOurSessionId, token);
-      fOurRTSPServer.unnoteTCPStreamingOnSocket(fStreamStates[trackNum].tcpSocketNum, this, trackNum);
-      subsession->deleteStream(fOurSessionId, token);
-    }
-
     // Look for a "Transport:" header in the request string, to extract client parameters:
     StreamingMode streamingMode;
     char* streamingModeString = NULL; // set when RAW_UDP streaming is specified
@@ -1595,13 +1620,16 @@ void RTSPServer::RTSPClientSession
     u_int8_t clientsDestinationTTL;
     portNumBits clientRTPPortNum, clientRTCPPortNum;
     unsigned char rtpChannelId, rtcpChannelId;
-    parseTransportHeader(fFullRequestStr, streamingMode, streamingModeString,
-			 clientsDestinationAddressStr, clientsDestinationTTL,
-			 clientRTPPortNum, clientRTCPPortNum,
-			 rtpChannelId, rtcpChannelId);
+    if (!parseTransportHeader(fFullRequestStr, streamingMode, streamingModeString,
+			      clientsDestinationAddressStr, clientsDestinationTTL,
+			      clientRTPPortNum, clientRTCPPortNum,
+			      rtpChannelId, rtcpChannelId)) {
+      ourClientConnection->handleCmd_unsupportedTransport();
+      break;
+    }
     if ((streamingMode == RTP_TCP && rtpChannelId == 0xFF) ||
 	(streamingMode != RTP_TCP && ourClientConnection->fClientOutputSocket != ourClientConnection->fClientInputSocket)) {
-      // An anomolous situation, caused by a buggy client.  Either:
+      // An anomalous situation, caused by a buggy client.  Either:
       //     1/ TCP streaming was requested, but with no "interleaving=" fields.  (QuickTime Player sometimes does this.), or
       //     2/ TCP streaming was not requested, but we're doing RTSP-over-HTTP tunneling (which implies TCP streaming).
       // In either case, we assume TCP streaming, and set the RTP and RTCP channel ids to proper values:
@@ -1609,9 +1637,6 @@ void RTSPServer::RTSPClientSession
       rtpChannelId = fTCPStreamIdCount; rtcpChannelId = fTCPStreamIdCount+1;
     }
     if (streamingMode == RTP_TCP) fTCPStreamIdCount += 2;
-    
-    Port clientRTPPort(clientRTPPortNum);
-    Port clientRTCPPort(clientRTCPPortNum);
     
     // Next, check whether a "Range:" or "x-playNow:" header is present in the request.
     // This isn't legal, but some clients do this to combine "SETUP" and "PLAY":
@@ -1627,6 +1652,15 @@ void RTSPServer::RTSPClientSession
       fStreamAfterSETUP = False;
     }
     
+    void*& token = fStreamStates[trackNum].streamToken; // alias
+    if (token != NULL) {
+      // We already handled a "SETUP" for this track (to the same client),
+      // so stop any existing streaming of it, before we set it up again:
+      subsession->pauseStream(fOurSessionId, token);
+      fOurRTSPServer.unnoteTCPStreamingOnSocket(fStreamStates[trackNum].tcpSocketNum, this, trackNum);
+      subsession->deleteStream(fOurSessionId, token);
+    }
+
     // Then, get server parameters from the 'subsession':
     if (streamingMode == RTP_TCP) {
       // Note that we'll be streaming over the RTSP TCP connection:
@@ -1659,6 +1693,9 @@ void RTSPServer::RTSPClientSession
     struct sockaddr_storage sourceAddr; SOCKLEN_T namelen = sizeof sourceAddr;
     getsockname(ourClientConnection->fClientInputSocket, (struct sockaddr*)&sourceAddr, &namelen);
     
+    Port clientRTPPort(clientRTPPortNum);
+    Port clientRTCPPort(clientRTCPPortNum);
+    
     subsession->getStreamParameters(fOurSessionId, ourClientConnection->fClientAddr,
 				    clientRTPPort, clientRTCPPort,
 				    streamingMode == RTP_TCP
@@ -1679,6 +1716,10 @@ void RTSPServer::RTSPClientSession
     }
     if (fIsMulticast) {
       switch (streamingMode) {
+          case UNKNOWN: { // shouldn't happen
+	    ourClientConnection->handleCmd_unsupportedTransport();
+	    break;
+	  }
           case RTP_UDP: {
 	    snprintf((char*)ourClientConnection->fResponseBuffer, sizeof ourClientConnection->fResponseBuffer,
 		     "RTSP/1.0 200 OK\r\n"
@@ -1714,6 +1755,10 @@ void RTSPServer::RTSPClientSession
       }
     } else {
       switch (streamingMode) {
+          case UNKNOWN: { // shouldn't happen
+	    ourClientConnection->handleCmd_unsupportedTransport();
+	    break;
+	  }
           case RTP_UDP: {
 	    snprintf((char*)ourClientConnection->fResponseBuffer, sizeof ourClientConnection->fResponseBuffer,
 		     "RTSP/1.0 200 OK\r\n"
